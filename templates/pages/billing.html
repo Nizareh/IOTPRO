@@ -1,0 +1,347 @@
+{% extends 'layouts/base.html' %}
+{% load static %}
+
+{% block content %}
+<style>
+    .graphique {
+        max-width: 1000px;
+        margin: auto;
+        padding: 20px;
+    }
+
+    .navb {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+
+    button {
+        padding: 10px 15px;
+        margin: 0 10px;
+        font-size: 14px;
+        cursor: pointer;
+        border: none;
+        border-radius: 5px;
+        background-color: #3498db; /* Primary color */
+        color: #fff; /* Text color */
+    }
+
+    button:hover {
+        background-color: #2980b9; /* Hover color */
+    }
+
+    .graphique-temp,
+    .graphique-hum {
+        margin-bottom: 20px;
+    }
+
+    canvas {
+        border: 10px solid #ccc;
+        border-radius: 50px;
+        width: 100%; /* Set the width to 100% of the container */
+        height: 300px;
+    }
+
+    .zoom-buttons {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 10px;
+    }
+
+    #datepicker-container {
+        position: relative;
+        display: inline-block;
+        margin-top: 10px;
+    }
+
+    #datepicker {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        display: none;
+        z-index: 1;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 14px;
+        width: 200px; /* Set the desired width */
+        box-sizing: border-box;
+        background-color: #fff;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .pika-single {
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        background: #fff;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        border-radius: 5px;
+        border: 1px solid #ddd;
+        display: inline-block;
+        position: absolute;
+        box-sizing: border-box;
+    }
+
+    .pika-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0;
+    }
+
+    .pika-button {
+        cursor: pointer;
+        padding: 10px;
+        width: 30px;
+        height: 30px;
+        border: none;
+        text-align: center;
+        background: none;
+        color: #333;
+        font-size: 14px;
+        line-height: 1;
+        transition: background-color 0.3s ease;
+    }
+
+    .pika-button:hover {
+        background-color: #f2f2f2;
+    }
+
+    .pika-day.is-today {
+        background-color: #3498db; /* Today's date background color */
+        color: #fff; /* Today's date text color */
+    }
+
+    .is-outside-current-month {
+        color: #bbb; /* Days outside the current month text color */
+    }
+
+    #datetime-display {
+        margin-top: 10px;
+        text-align: center;
+        font-size: 14px;
+    }
+</style>
+
+
+<div class="graphique">
+    <div class="navb">
+        <button id="aujourdhui-link">Historique d'Aujourd'hui</button>
+        <button id="semaine-link">Historique de cette semaine</button>
+        <button id="mois-link">Historique de ce mois</button>
+        <div id="datepicker-container">
+            <button id="personnaliser-link">Personnaliser</button>
+            <input type="text" id="datepicker" style="display: none;">
+        </div>
+    </div>
+    <div class="chart-container">
+        <div class="graphique-temp">
+            <canvas id="graphique-temp" height="400" width="600"></canvas>
+            <div class="zoom-buttons">
+                <!-- Ajouter des boutons de zoom pour le graphique de température -->
+                <button id="zoom-in-temp">Zoom +</button>
+                <button id="zoom-out-temp">Zoom -</button>
+                <button id="reset-zoom-temp">Réinitialiser</button>
+            </div>
+        </div>
+        <div class="graphique-hum">
+            <canvas id="graphique-hum" height="400" width="600"></canvas>
+            <div class="zoom-buttons">
+                <!-- Ajouter des boutons de zoom pour le graphique d'humidité -->
+                <button id="zoom-in-hum">Zoom +</button>
+                <button id="zoom-out-hum">Zoom -</button>
+                <button id="reset-zoom-hum">Réinitialiser</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.3/dist/Chart.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@0.7.7"></script>
+<script src="https://cdn.jsdelivr.net/npm/pikaday@1.8.0/pikaday.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const aujourdhuiLink = document.getElementById('aujourdhui-link');
+        const semaineLink = document.getElementById('semaine-link');
+        const moisLink = document.getElementById('mois-link');
+        const zoomInTempBtn = document.getElementById('zoom-in-temp');
+        const zoomOutTempBtn = document.getElementById('zoom-out-temp');
+        const resetZoomTempBtn = document.getElementById('reset-zoom-temp');
+        const zoomInHumBtn = document.getElementById('zoom-in-hum');
+        const zoomOutHumBtn = document.getElementById('zoom-out-hum');
+        const resetZoomHumBtn = document.getElementById('reset-zoom-hum');
+        const datetimeDisplay = document.getElementById('datetime-display');
+
+        let tempChart;
+        let humChart;
+
+        aujourdhuiLink.addEventListener('click', () => {
+            fetchDataAndCreateChart('/chart-data-jour/');
+        });
+
+        semaineLink.addEventListener('click', () => {
+            fetchDataAndCreateChart('/chart-data-semaine/');
+        });
+
+        moisLink.addEventListener('click', () => {
+            fetchDataAndCreateChart('/chart-data-mois/');
+        });
+
+        // Initial load
+        fetchDataAndCreateChart('/chart-data/');
+
+        function fetchDataAndCreateChart(url) {
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (tempChart) tempChart.destroy();
+                    if (humChart) humChart.destroy();
+
+                    tempChart = createChart('graphique-temp', data.temps, data.temperature);
+                    humChart = createChart('graphique-hum', data.temps, data.humidity);
+                    updateDateTimeDisplay(data.temps[data.temps.length - 1]);
+                });
+        }
+
+        function createChart(canvasId, labels, dataValues) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: canvasId.includes('temp') ? 'La valeur de Températeur' : 'La valeur de Humidité',
+                        data: dataValues,
+                        backgroundColor: canvasId.includes('temp') ? '#ffe6e6' : '#e6ecff',
+                        borderColor: canvasId.includes('temp') ? 'rgb(255, 230, 230)' : 'rgb(230, 236, 255)',
+                        borderWidth: 1,
+                        pointStyle: 'circles',
+                        pointRadius: 2,
+                        pointBorderColor: 'black'
+                    }]
+                },
+                options: {
+                    scales: {
+                        yAxes: [{
+                            ticks: {
+                                beginAtZero: true,
+                                callback: function (value, index, values) {
+                                    return canvasId.includes('temp') ? value + '°' : value + '%';
+                                }
+                            }
+                        }],
+                        xAxes: [{
+                            ticks: {
+                                beginAtZero: true,
+                                display: true
+                            }
+                        }]
+                    },
+                    plugins: {
+                        zoom: {
+                            pan: {
+                                enabled: true,
+                                mode: 'xy',
+                            },
+                            zoom: {
+                                enabled: true,
+                                mode: 'xy',
+                            },
+                        },
+                    }
+                }
+            });
+        }
+
+        // Zoom buttons for temperature
+        zoomInTempBtn.addEventListener('click', () => {
+            tempChart.options.plugins.zoom.zoom.deltaPercentage = 0.5;
+            tempChart.resetZoom();
+        });
+
+        zoomOutTempBtn.addEventListener('click', () => {
+            tempChart.options.plugins.zoom.zoom.deltaPercentage = -0.5;
+            tempChart.resetZoom();
+        });
+
+        resetZoomTempBtn.addEventListener('click', () => {
+            tempChart.resetZoom();
+        });
+
+        // Zoom buttons for humidity
+        zoomInHumBtn.addEventListener('click', () => {
+            humChart.options.plugins.zoom.zoom.deltaPercentage = 0.5;
+            humChart.resetZoom();
+        });
+
+        zoomOutHumBtn.addEventListener('click', () => {
+            humChart.options.plugins.zoom.zoom.deltaPercentage = -0.5;
+            humChart.resetZoom();
+        });
+
+        resetZoomHumBtn.addEventListener('click', () => {
+            humChart.resetZoom();
+        });
+
+        function updateDateTimeDisplay(lastTimestamp) {
+            const formattedDateTime = moment(lastTimestamp).format('YYYY-MM-DD HH:mm:ss');
+            datetimeDisplay.textContent = `Dernière mise à jour : ${formattedDateTime}`;
+        }
+    });
+</script>
+
+
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const personnaliserLink = document.getElementById('personnaliser-link');
+        const datePickerInput = document.getElementById('datepicker');
+
+        personnaliserLink.addEventListener('click', () => {
+            // Afficher ou masquer le calendrier lors du clic sur "Personnaliser"
+            datePickerInput.style.display = (datePickerInput.style.display === 'none') ? 'block' : 'none';
+
+            // Créer le sélecteur de date si le calendrier est affiché
+            if (datePickerInput.style.display === 'block') {
+                const picker = new Pikaday({
+                    field: datePickerInput,
+                    format: 'YYYY-MM-DD',
+                    onSelect: function (date) {
+                        // Gérer la date sélectionnée ici
+                        console.log(date);
+
+                        // Mettre à jour le graphique en fonction de la date sélectionnée
+                        updateChart(date);
+                    },
+                });
+
+                // Ouvrir le calendrier lorsqu'on clique sur "Personnaliser"
+                picker.show();
+            }
+        });
+
+        // Initialiser le graphique avec les données d'aujourd'hui par défaut
+        updateChart(new Date());
+    });
+
+    function updateChart(selectedDate) {
+        // Mettez à jour le graphique en fonction de la date sélectionnée
+        const formattedDate = moment(selectedDate).format('YYYY-MM-DD');
+        console.log('Selected Date:', formattedDate);
+
+        // Utilisez cette date pour mettre à jour les données du graphique en fonction de votre backend
+        // Vous pouvez appeler votre backend avec la date sélectionnée pour obtenir les données actualisées
+        // Exemple : fetch(`/chart-data-custom/?date=${formattedDate}`)
+        //    .then(response => response.json())
+        //    .then(data => {
+        //        // Mettez à jour le graphique avec les nouvelles données
+        //    });
+    }
+</script>
+
+    <input type="text" id="datepicker" style="display: none;">
+
+
+    {% include "includes/footer.html" %}
+    
+  </div>
+
+{% endblock content %}
